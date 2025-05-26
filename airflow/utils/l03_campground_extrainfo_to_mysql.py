@@ -19,7 +19,7 @@ class Campground(Base):
     longitude = Column(DECIMAL(10,7), nullable=True)
 
 def load_data():
-    input_path = Path(r"/home/Tibame/tjr101_project/add_id_campground.csv")
+    input_path = Path("output", "add_id_campground.csv")
     df = pd.read_csv(input_path, encoding="utf-8-sig")
     return df
 
@@ -27,7 +27,7 @@ def load_data():
 # ---------------------------
 def connect_db():
     # 建立連線
-    host='104.199.166.199' # 主機位置
+    host='35.229.197.153' # 主機位置
     user='shelly' # 使用者名稱
     port='3306' # 埠號
     password='shelly-password' # 密碼
@@ -42,6 +42,8 @@ def write_data(session, df):
     
     updated_count = 0
     for _, row in df.iterrows():
+        row = row.where(pd.notnull(row), None)
+        
         affected = session.query(Campground).filter_by(campground_ID=row["campground_ID"]).update({
             Campground.address: row["address"],
             Campground.total_rank: row["total_rank"],

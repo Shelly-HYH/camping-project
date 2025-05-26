@@ -1,6 +1,6 @@
 from datetime import timedelta
 from airflow.decorators import dag, task
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 import utils.t01_final_clean_campground as t01
 import pendulum
 import pandas as pd
@@ -9,7 +9,7 @@ from pathlib import Path
 default_args = {
     "owner": "airflow",
     "depends_on_past": False,
-    "email": ["sia1940@gmail.com"],
+    "email": False,
     "email_on_failure": True,
     "email_on_retry": False,
     "retries": 1,
@@ -23,22 +23,13 @@ default_args = {
     schedule_interval=None,
     start_date=pendulum.yesterday(tz="Asia/Taipei"),
     catchup=False,
+    is_paused_upon_creation=False,
     tags=["raw data", "campground"]  # Optional: Add tags for better filtering in the UI
 )
 
 def t01_clean_campground():
-    wait_for_d01 = ExternalTaskSensor(
-        task_id="wait_for_dag01",
-        external_dag_id="01_e_crawl_google_map",
-        external_task_id="__all__",
-        allowed_states=["success"],
-        failed_states=["failed", "skipped"],
-        mode="poke",
-        poke_interval=60,
-        timeout=60 * 60 * 1
-    )
 
-    save_path = Path("/home/Tibame/tjr101_project") 
+    save_path = Path("output") 
     input_path = save_path / "All_campsite_final.csv"
     output_path = save_path / "final_campground_clean.csv"
 
@@ -46,49 +37,87 @@ def t01_clean_campground():
     def read_raw_data():
         df = pd.read_csv(input_path, encoding="utf-8-sig")
         df = df[df["Campsite"] != "安平漁人馬桶"]
-        return df.to_json(orient="split")
+
+        # 暫存處理後結果
+        output_path = Path("output") / "campground_clean_step1.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        return str(output_path)
 
     @task
-    def task01(json_df):
-        df = pd.read_json(json_df, orient="split")
+    def task01(input_path):
+        df = pd.read_csv(input_path, encoding="utf-8-sig")
         df["Campsite"] = t01.clean_campground_name(df["Campsite"])
         df["Campsite_clean"] = df["Campsite"].apply(t01.get_prefix)
         df = t01.clean_campground_duplicate(df)
-        return df.to_json(orient="split")
+
+        # 暫存處理後結果
+        output_path = Path("output") / "campground_clean_step2.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        return str(output_path)
 
     @task
-    def task02(json_df):
-        df = pd.read_json(json_df, orient="split")
+    def task02(input_path):
+        df = pd.read_csv(input_path, encoding="utf-8-sig")
         df["Address"] = t01.clean_address(df["Address"])
         df = t01.change_address(df)
-        return df.to_json(orient="split")
+
+        # 暫存處理後結果
+        output_path = Path("output") / "campground_clean_step3.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        return str(output_path)
 
     @task
-    def task03(json_df):
-        df = pd.read_json(json_df, orient="split")
+    def task03(input_path):
+        df = pd.read_csv(input_path, encoding="utf-8-sig")
         df["Reviews"] = t01.clean_review_number(df["Reviews"])
-        return df.to_json(orient="split")
+
+        # 暫存處理後結果
+        output_path = Path("output") / "campground_clean_step4.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        return str(output_path)
+    
+    @task
+    def task04(input_path):
+        df = pd.read_csv(input_path, encoding="utf-8-sig")
+        df_county = t01.load_county_id()
+        result_df = t01.add_county_id(df_county, df)
+
+        # 暫存處理後結果
+        output_path = Path("output") / "campground_clean_step5.csv"
+        result_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        return str(output_path)
 
     @task
-    def save_result(json_df):
-        df = pd.read_json(json_df, orient="split")
-        df["Name"] = "shelly"
-        cols = df.columns.tolist()
-        cols.insert(0, cols.pop(cols.index("Name")))
-        df = df[cols]
+    def save_result(input_path):
+        df = pd.read_csv(input_path, encoding="utf-8-sig")
+        df.insert(0, "Name", "shelly")
 
         df.to_csv(output_path, index=False, encoding="utf-8-sig")
         print(f"成功儲存共{len(df)}筆資料到{output_path}")
 
         # 儲存露營場清單
         t01.save_campground_list(df)
+
+    # 觸發下一個DAG
+    trigger_clean = TriggerDagRunOperator(
+        task_id="trigger_clean_reviews",
+        trigger_dag_id="03_t_clean_reviews",  # 對應的 DAG id
+        wait_for_completion=False,
+        reset_dag_run=True
+    )
         
-    raw = read_raw_data()
-    wait_for_d01 >> raw
-    
-    step1 = task01(raw)
-    step2 = task02(step1)
-    step3 = task03(step2)
-    save_result(step3)
-    
+    step1_path = read_raw_data()
+    step2_path = task01(step1_path)
+    step3_path = task02(step2_path)
+    step4_path = task03(step3_path)
+    step5_path = task04(step4_path)
+    save_result(step5_path) >> trigger_clean
+
+    return save_result, trigger_clean
+   
 t01_clean_campground()

@@ -11,6 +11,7 @@ from pathlib import Path
 import time
 import re
 from rapidfuzz import fuzz
+from sqlalchemy import create_engine
 
 def clean_campground_name(series: pd.Series):
     """
@@ -229,16 +230,25 @@ def clean_campground_duplicate(df: pd.DataFrame):
     return df_unique
 
 def change_address(df):
-    geolocator = Nominatim(user_agent="my_geocoder")
+    geolocator = Nominatim(user_agent="my_geocoder", timeout=5)
     def cut_to_district(address):
+
+        if not isinstance(address, str):
+           return None
+        
+        if address == "No.154-1 Heping Wufong Township Hsinchuhsien T'Ai-Wan":
+            return "台灣新竹縣五峰鄉"
+        
         # 地址切到區／鄉／鎮／市，不包含後面的村里鄰...等
         match = re.search(r"^(.*?[縣市].*?[區鄉鎮市])", address)
         if match:
             return "台灣" + match.group(1)
         else:
             # 若格式無法辨識，就直接加上台灣
-            return "台灣" + address
+            return None
+        
     df["清洗後地址"] = df["Address"].apply(cut_to_district)
+    df["清洗後地址"] = df["清洗後地址"].fillna(method = "ffill")
 
     # 準備儲存經緯度
     latitudes = []
@@ -290,6 +300,8 @@ def change_address(df):
     
     for i, addr in df["清洗後地址"].items():
         found = False
+        if not isinstance(addr, str):
+            continue
         for keyword, (lat, lng) in custom_latlng.items():
             if keyword in addr:
                 df.at[i, "latitude"] = lat
@@ -300,12 +312,34 @@ def change_address(df):
             continue
     return df
 
+def load_county_id():
+    host='35.229.197.153' # 主機位置
+    user='shelly' # 使用者名稱
+    port='3306' # 埠號
+    password='shelly-password' # 密碼
+    url = f"mysql+pymysql://{user}:{password}@{host}:{port}/test3_db"
+    engine = create_engine(url, echo=True)
+    with engine.connect() as connection:
+        df_county = pd.read_sql("SELECT * FROM county", con=engine)
+
+    df_county.to_csv("ref_county.csv", index=False, encoding="utf-8-sig")
+    return df_county
+
+def add_county_id(df_county, df):
+    df_county["cleaned_county"] = df_county["county_name"].apply(
+            lambda x: x if x == "新竹市" else x[:2]
+            )
+
+    result_df = df.merge(df_county[["cleaned_county", "county_ID"]], left_on="City", right_on="cleaned_county", how="left")
+
+    return result_df
+
 
 def save_campground_list(df):
     """
     儲存不重複的露營場清單，寫入資料庫產生ID用
     """
-    campground = df["Campsite"]
+    campground = df[["Campsite", "county_ID"]].copy()
     campground = campground.rename(columns={
                                         "Campsite": "camping_site_name",
                                     })

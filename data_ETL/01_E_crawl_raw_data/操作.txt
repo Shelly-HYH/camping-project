@@ -1,0 +1,88 @@
+GCP建立VM
+** 硬碟最好開大一點ex:30G or 50G，免得後面空間不足
+防火牆打開port 8080
+-------
+
+* 安裝docker
+參考網址: https://docs.docker.com/engine/install/ubuntu/
+
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+*修改權限
+sudo usermod -aG docker `whoami`
+*指令輸入後重新登入gcloud
+--------
+
+* 創建資料夾
+mkdir ~/tjr101_project
+
+*上傳寫好的Dockerfile及需要檔案
+*從本機powershell先進入存檔的資料夾
+
+gcloud compute scp ./e_gcp_selenium_crawl.py Tibame@crawl-with-airflow:/home/Tibame/tjr101_project/ --zone asia-east1-b
+gcloud compute scp ./requirements.txt Tibame@crawl-with-airflow:/home/Tibame/tjr101_project/ --zone asia-east1-b
+gcloud compute scp ./Dockerfile Tibame@crawl-with-airflow:/home/Tibame/tjr101_project/ --zone asia-east1-b
+
+--------
+
+* 進入VM的指令介面
+* cd到tjr101_project
+* 先用cat確認Dockerfile內容正確
+* 利用Dockerfile build image
+
+docker build -t my-crawler-image .
+--------
+
+* 安裝airflow的container
+* airflow需要加入docker群組以便操作docker container
+
+docker run -it -d \
+    --name airflow-server \
+    -p 8080:8080 \
+    -v /home/Tibame/tjr101_project/dags:/opt/airflow/dags \
+    -v /home/Tibame/tjr101_project/logs:/opt/airflow/logs \
+    -v /home/Tibame/tjr101_project/utils:/opt/airflow/utils \
+    -v /home/Tibame/tjr101_project/tasks:/opt/airflow/tasks \
+    -e PYTHONPATH=/opt/airflow \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    --group-add 990 \
+    apache/airflow:2.8.1 standalone
+
+* 進入container
+docker exec -it airflow-server /bin/bash
+
+* 創建使用者
+airflow users create \
+    --username airflow \
+    --firstname airflow \
+    --password airflow \
+    --lastname airflow \
+    --role Admin \
+    --email your_email@example.com
+
+* 創建檔案
+sudo touch /opt/airflow/utils/__init__.py
+sudo touch /opt/airflow/tasks/__init__.py
+
+
+* 把寫好的DAG上傳到VM
+* 本機powershell進入存檔的資料夾
+
+gcloud compute scp ./(DAG檔案).py xxx@xxx:/home/xxx/xxx/dags --zone (主機的Zone)
+
+
+* 登入airflow UI
+http://(VM的外部IP):8080
+
+

@@ -18,5 +18,5 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # 複製爬蟲檔案
 COPY utils/e_gcp_selenium_crawl.py .
 
-# 預設啟動
-CMD ["python3", "e_gcp_selenium_crawl.py"]
+# # 預設啟動
+# CMD ["python3", "e_gcp_selenium_crawl.py"]

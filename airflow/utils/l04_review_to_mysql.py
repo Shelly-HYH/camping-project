@@ -21,14 +21,14 @@ class Review(Base):
     article_type = Column(VARCHAR(10), nullable=False)
 
 def load_data():
-    input_path = Path(r"/home/Tibame/tjr101_project/add_id_reviews.csv")
+    input_path = Path("output", "add_id_reviews.csv")
     df = pd.read_csv(input_path, encoding="utf-8-sig")
     return df
 
 # ---------------------------
 def connect_db():
     # 建立連線
-    host='104.199.166.199' # 主機位置
+    host='35.229.197.153' # 主機位置
     user='shelly' # 使用者名稱
     port="3306" # 埠號
     password='shelly-password' # 密碼
@@ -44,9 +44,18 @@ def write_data(session, df):
     # 分批寫入
     batch_size = 1000
     for i in range(0, len(df), batch_size):
+
         batch = df.iloc[i:i+batch_size]
-        articles = [
-            Review(
+        articles = []
+
+        for _, row in batch.iterrows():
+            
+            row = row.where(pd.notnull(row), None)  # 處理 NaN
+
+            if row["camper_ID"] is None:  # 如果 camper_ID 缺值就略過
+                continue
+
+            article = Review(
                 publish_date=row["publish_date"],
                 article_rank=row["article_rank"],
                 content=row["content"],
@@ -55,11 +64,15 @@ def write_data(session, df):
                 platform_ID=row["platform_ID"],
                 article_type=row["article_type"]
             )
-            for _, row in batch.iterrows()
-        ]
-        session.add_all(articles)
-        session.commit()
-        print(f"已寫入第{i + len(batch)}筆")
+            articles.append(article)
+        try:
+            if articles:
+                session.add_all(articles)
+                session.commit()
+
+        except Exception as e:
+            session.rollback()
+            print(f"[錯誤] 新增失敗：{e}")
 
     session.close()
-    print("已完成寫入")
+

@@ -17,7 +17,7 @@ class Camper(Base):
 
 def connect_db():
     # 建立連線
-    host='104.199.166.199' # 主機位置
+    host='35.229.197.153' # 主機位置
     user='shelly' # 使用者名稱
     port='3306' # 埠號
     password='shelly-password' # 密碼

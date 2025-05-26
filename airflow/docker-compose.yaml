@@ -11,17 +11,21 @@ services:
       - /home/Tibame/tjr101_project/logs:/opt/airflow/logs
       - /home/Tibame/tjr101_project/utils:/opt/airflow/utils
       - /home/Tibame/tjr101_project/tasks:/opt/airflow/tasks
+      - /home/Tibame/tjr101_project/output:/opt/airflow/output
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PYTHONPATH=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://shelly:shelly-password@mysql-database:3306/test3_db
     group_add:
       - '990'
     networks:
       - crawler-net
     command: >
       bash -c "
-      airflow db upgrade &&
+      airflow db init &&
       airflow users create --username airflow --password airflow --firstname airflow --lastname airflow --role Admin --email admin@example.com &&
+      airflow scheduler & 
       airflow webserver
       "
 
@@ -66,7 +70,6 @@ services:
       - selenium-grid
       - airflow
       - mysql
-    command: ["python3", "e_gcp_selenium_crawl.py"]
     volumes:
       - /home/Tibame/tjr101_project/output:/app/output
     networks:

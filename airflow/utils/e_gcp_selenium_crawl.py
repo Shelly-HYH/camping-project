@@ -31,10 +31,10 @@ def e_chrome_robot():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1280,720")
     options.add_argument("--disable-gpu")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
+    # options.add_argument("--disable-software-rasterizer")
+    # options.add_argument("--disable-background-timer-throttling")
+    # options.add_argument("--disable-backgrounding-occluded-windows")
+    # options.add_argument("--disable-renderer-backgrounding")
     
     driver = webdriver.Remote(
     command_executor="http://104.199.166.199:4444/wd/hub",
@@ -54,18 +54,20 @@ def e_search_all_links(url, driver, query):
     scroll_block = scroll_blocks[-1]
 
     # 多次滾動左側搜尋結果直到底部
-    while True:    
+    max_scroll = 0
+    while max_scroll < 5:    
         try:
-            done_elem = driver.find_element(By.CSS_SELECTOR, "span.HlvSq")
-            done_text = done_elem.text.strip()
-            if "你已看完所有搜尋結果" in done_text:
-                print("已經滾動到底了")
-                break
+            driver.find_element(By.CSS_SELECTOR, "span.HlvSq")
+            # done_text = done_elem.text.strip()
+            # if "你已看完所有搜尋結果" in done_text:
+            #     print("已經滾動到底了")
+            #     break
         except:
             pass
 
         # 每次滾動一段距離
         driver.execute_script("arguments[0].scrollTop += 1000;", scroll_block)
+        max_scroll += 1
         wait(3, 5)
 
     # 排除贊助商廣告
@@ -344,6 +346,8 @@ def e_save_camp_reviews(review_checkpoint_path, **data):
     
 def e_save_to_final_file(driver):
     driver.quit()
+    save_path = Path("output")
+    save_campground = save_path / "All_campsite_final.csv"
     
     # 整併全部基本資料的checkpoint檔案
     camp_files = glob.glob("output/checkpoint/*_basic_info_checkpoint.csv")
@@ -353,8 +357,7 @@ def e_save_to_final_file(driver):
     camp_df = camp_df[columns]
     camp_df = camp_df.drop_duplicates(subset=["Campsite", "Address"])
 
-    final_filename = f"All_campsite_final.csv"
-    camp_df.to_csv(final_filename, index=False, encoding="utf-8-sig")
+    camp_df.to_csv(save_campground, index=False, encoding="utf-8-sig")
 
     # 整併全部評論checkpoint資料
     review_files = glob.glob("output/checkpoint/*_review_info_checkpoint.csv")
@@ -364,7 +367,8 @@ def e_save_to_final_file(driver):
     review_df = review_df[review_columns]
     review_df = review_df.drop_duplicates(subset=["check_ID"])
     
-    review_df.to_csv("camp_reviews_final.csv", index=False, encoding="utf-8-sig")
+    review_file = save_path / "camp_reviews_final.csv"
+    review_df.to_csv(review_file, index=False, encoding="utf-8-sig")
 
     print(f"\n所有checkpoint檔案已整併儲存")
 
@@ -381,9 +385,9 @@ def main():
     driver = e_chrome_robot()
     # 縣市列表
     taiwan_cities = [
-        #"台北", "新北", "基隆", 
-        "新竹", "苗栗", "桃園", 
-        "南投", "台中", #"彰化", "雲林", 
+        "台北", "新北", "基隆", 
+        #"新竹", "桃園", "苗栗", 
+        #"南投", "台中", "彰化", "雲林", 
         #"高雄", "嘉義", "台南",  "屏東", 
         #"宜蘭", "花蓮", "台東",
     ]
