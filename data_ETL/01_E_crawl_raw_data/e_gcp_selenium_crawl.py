@@ -31,18 +31,21 @@ def e_chrome_robot():
     # 更新
 
     options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1280,720")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
+    options.add_experimental_option("detach", True)
+
+    # options.add_argument("--headless=new")
+    # options.add_argument("--no-sandbox")
+    # options.add_argument("--disable-dev-shm-usage")
+    # options.add_argument("--window-size=1280,720")
+    # options.add_argument("--disable-gpu")
+    # options.add_argument("--disable-software-rasterizer")
+    # options.add_argument("--disable-background-timer-throttling")
+    # options.add_argument("--disable-backgrounding-occluded-windows")
+    # options.add_argument("--disable-renderer-backgrounding")
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
+    driver.maximize_window()
 
     return driver
 
@@ -102,12 +105,12 @@ def e_search_all_links(url, driver, query):
 def e_checkpoint(city):
     # checkpoint檔案
     # 每個縣市的基本資料checkpoint檔案
-    checkpoint_folder = Path("output", "checkpoint")
+    checkpoint_folder = Path(".venv", "output", "checkpoint")
     checkpoint_folder.mkdir(parents=True, exist_ok=True)
     checkpoint_path = checkpoint_folder / f"{city}_basic_info_checkpoint.csv"
 
     # 評論資料的暫存檔
-    review_checkpoint_folder = Path("output", "checkpoint")
+    review_checkpoint_folder = Path(".venv", "output", "checkpoint")
     review_checkpoint_folder.mkdir(parents=True, exist_ok=True)
     review_checkpoint_path = review_checkpoint_folder / f"{city}_review_info_checkpoint.csv"
 
@@ -160,37 +163,51 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
             element = driver.find_element(By.CLASS_NAME, "lMbq3e")
             wait(3, 5)
 
-            # 基本資訊1
-            # print("爬基本資訊")
+            # 名稱
             camp_name = element.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text
 
-            # 確認以前checkpoint是否爬過
+            # 確認checkpoint是否有資料
             if camp_name in done_names:
                 print(f"{camp_name}已處理過，略過")
                 continue
             
             else:
-                # 其他基本資訊
-                rank = element.find_element(By.CSS_SELECTOR, 'span[aria-hidden="true"]').text
-                total_rate = element.find_element(By.CSS_SELECTOR, 'span[aria-label$="則評論"]').text.strip("()")
-                wait()
-                
-                parent_blocks = driver.find_elements(By.CSS_SELECTOR, "div.RcCsl.fVHpi.w4vB1d.NOE9ve.M0S7ae.AG25L")[:3]
-                address = parent_blocks[0].find_element(By.CSS_SELECTOR, ".Io6YTe.fontBodyMedium").text.strip().replace('"', '').replace(",", "")
+                # 爬經緯度---------- 
+                current_url = driver.current_url
+                latitude = None
+                longitute = None
 
-                # 儲存基本資料
+                match = re.search(r"/@(\d+\.\d+),(\d+\.\d+)", current_url)
+                if match:
+                    latitude = match.group(1)
+                    longitute = match.group(2)
+                else:
+                    print("url無經緯度資訊")
+
+                # 其他基本資訊----------
+                rank = element.find_element(By.CSS_SELECTOR, 'span[aria-hidden="true"]').text.strip()
+                total_rate = element.find_element(By.CSS_SELECTOR, 'span[aria-label$="則評論"]').text.strip("()").replace(",", "")
+                wait()
+
+                address_block = driver.find_element(By.CSS_SELECTOR, 'div.RcCsl.fVHpi.w4vB1d.NOE9ve.M0S7ae.AG25L')
+                address_element = address_block.find_element(By.CSS_SELECTOR, 'button[data-item-id="address"]')
+                address = address_element.get_attribute("aria-label").replace("地址:", "").strip()
+
+                # 儲存資料----------
                 camp_info = {
                     "Campsite": camp_name,
                     "City": city,  
                     "Rank": rank,
                     "Reviews": total_rate,
-                    "Address": address,                        
+                    "Address": address,
+                    "Latitude": latitude,
+                    "Longitute": longitute,                   
                 }
 
                 e_basicinfo_save_to_checkpoint(checkpoint_path, **camp_info)
+                print(f"已儲存{camp_name}基本資訊")
                     
                 wait()
-                # print(f"{camp_name}基本資訊爬完&儲存")
 
             # 準備爬評論
             # 抓所有 tab 按鈕
@@ -200,7 +217,6 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
             wait(3, 5)
             
             if tabs:
-                # print(f"tab數量: {len(tabs)}")
                 section_names = driver.find_elements(By.CSS_SELECTOR, ".Gpq6kf.NlVald")
 
                 for name in section_names:
@@ -211,7 +227,6 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
                     # 點擊「評論」分頁
                     if label_text == "評論":
                         name.click()
-                        # print("進入評論") 
                         wait(5, 7) 
 
                         # 確認評論區塊
@@ -229,7 +244,7 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
                         actions = ActionChains(driver)
 
                         # 滑動評論到達指定篇數max_reviews
-                        max_reviews = 40
+                        max_reviews = 10
                         max_scrolls = 80
                         scroll_count = 0
                         last_count = 0
@@ -246,7 +261,6 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
                             reviews = driver.find_elements(By.CSS_SELECTOR, ".jftiEf.fontBodyMedium")
                             review_count = len(reviews)
                             
-                            # print(f"目前載入評論數：{review_count}")
 
                             if review_count >= max_reviews:
                                 # print("已達目標評論數，停止滑動")
@@ -263,7 +277,6 @@ def e_crawl_single_campground(driver, links, done_names, checkpoint_path, review
 
                             last_count = review_count                            
 
-                        # print("評論區滑動加載完成")
                         wait()
 
                         # 開始爬取評論
@@ -349,10 +362,10 @@ def e_save_to_final_file(driver):
     driver.quit()
     
     # 整併全部基本資料的checkpoint檔案
-    camp_files = glob.glob("output/checkpoint/*_basic_info_checkpoint.csv")
+    camp_files = glob.glob(".venv/output/checkpoint/*_basic_info_checkpoint.csv")
 
     camp_df = pd.concat([pd.read_csv(f, encoding='utf-8-sig') for f in camp_files], ignore_index=True)
-    columns = ["Campsite", "City", "Rank", "Reviews", "Address"]
+    columns = ["Campsite", "City", "Rank", "Reviews", "Address", "Latitude", "Longitute"]
     camp_df = camp_df[columns]
     camp_df = camp_df.drop_duplicates(subset=["Campsite", "Address"])
 
@@ -385,10 +398,10 @@ def main():
     # 縣市列表
     taiwan_cities = [
         #"台北", "新北", "基隆", 
-        "新竹", "苗栗", #"桃園", 
-        "南投", "台中", "彰化", "雲林", 
-        "高雄", "嘉義", "台南",  "屏東", 
-        "宜蘭", "花蓮", "台東",
+        # "新竹", "苗栗", "桃園", 
+        # "南投", "台中", "彰化", "雲林", 
+        # "高雄", "嘉義", "台南",  "屏東", 
+        "宜蘭", #"花蓮", "台東",
     ]
     # 迴圈爬取每個縣市的露營場
     for city in taiwan_cities:
