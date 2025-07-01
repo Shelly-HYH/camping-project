@@ -1,0 +1,14 @@
+apache-airflow==2.8.1
+selenium
+sqlalchemy
+mysql-connector-python
+pymysql
+pandas
+pendulum
+geopy
+rapidfuzz
+jieba
+vertexai
+google-cloud-aiplatform
+beautifulsoup4
+requests

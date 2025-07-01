@@ -1,0 +1,84 @@
+
+services:
+  
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-database
+    ports: 
+      - '3306:3306'
+    environment:
+      - MYSQL_ROOT_PASSWORD=my-password
+      - MYSQL_DATABASE=airflow_db
+      - MYSQL_USER=shelly
+      - MYSQL_PASSWORD=shelly-password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - n8n-robot-net
+
+  airflow:
+    image: my-airflow-image:latest
+    build:
+      context: ./airflow
+    container_name: airflow-server
+    ports:
+      - '8080:8080'
+    volumes:
+      - /home/allne/camping_project/dags:/opt/airflow/dags
+      - /home/allne/camping_project/logs:/opt/airflow/logs
+      - /home/allne/camping_project/utils:/opt/airflow/utils
+      - /home/allne/camping_project/tasks:/opt/airflow/tasks
+      - /home/allne/camping_project/output:/opt/airflow/output
+      - /home/allne/camping_project/airflow_home:/opt/airflow
+      - /home/allne/camping_project/airflow:/opt/airflow/myfiles
+    environment:
+      - PYTHONPATH=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://root:my-password@mysql-database:3306/airflow_db
+    depends_on:
+      - mysql
+    networks:
+      - n8n-robot-net
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username airflow --password airflow --firstname airflow --lastname airflow --role Admin --email admin@example.com &&
+      airflow scheduler &
+      airflow webserver
+      "
+  
+  selenium-standalone:
+    image: selenium/standalone-chrome:latest
+    container_name: selenium-standalone
+    ports:
+      - '4444:4444'
+    shm_size: 2g
+    environment:
+      - SE_NODE_MAX_SESSIONS=1
+      - SE_NODE_SESSION_TIMEOUT=300
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - n8n-robot-net
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_storage:/home/node/.n8n
+    environment:
+      - WEBHOOK_URL=https://d5af-35-201-136-64.ngrok-free.app
+      - N8N_SECURE_COOKIE=false
+    networks:
+      - n8n-robot-net
+
+networks:
+  n8n-robot-net:
+    driver: bridge
+
+volumes:
+  n8n_storage:
+  mysql-data:

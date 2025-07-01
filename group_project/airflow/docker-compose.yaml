@@ -1,0 +1,83 @@
+services:
+  airflow:
+    image: my-airflow-image:latest
+    build:
+      context: ./airflow
+    container_name: airflow-server
+    ports:
+      - '8080:8080'
+    volumes:
+      - /home/Tibame/tjr101_project/dags:/opt/airflow/dags
+      - /home/Tibame/tjr101_project/logs:/opt/airflow/logs
+      - /home/Tibame/tjr101_project/utils:/opt/airflow/utils
+      - /home/Tibame/tjr101_project/tasks:/opt/airflow/tasks
+      - /home/Tibame/tjr101_project/output:/opt/airflow/output
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PYTHONPATH=/opt/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://shelly:shelly-password@mysql-database:3306/test3_db
+    group_add:
+      - '990'
+    networks:
+      - crawler-net
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username airflow --password airflow --firstname airflow --lastname airflow --role Admin --email admin@example.com &&
+      airflow scheduler & 
+      airflow webserver
+      "
+
+  selenium-grid:
+    image: selenium/standalone-chrome:130.0-chromedriver-130.0-20250505
+    container_name: selenium-grid
+    ports:
+      - '4444:4444'
+      - '7900:7900'
+    shm_size: 2g
+    environment:
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+      - SE_NODE_MAX_SESSIONS=5
+      - JAVA_OPTS=-XX:ActiveProcessorCount=5
+    volumes:
+      - /dev/shm:/dev/shm
+    networks:
+      - crawler-net
+  
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-database
+    ports: 
+      - '3306:3306'
+    environment:
+      - MYSQL_ROOT_PASSWORD=my-password
+      - MYSQL_DATABASE=test3_db
+      - MYSQL_USER=shelly
+      - MYSQL_PASSWORD=shelly-password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - crawler-net
+      
+  crawler:
+    image: my-crawler-image:latest
+    build:
+      context: /home/Tibame/tjr101_project
+      dockerfile: crawler/Dockerfile    
+    container_name: crawler    
+    depends_on:
+      - selenium-grid
+      - airflow
+      - mysql
+    volumes:
+      - /home/Tibame/tjr101_project/output:/app/output
+    networks:
+      - crawler-net
+
+networks:
+  crawler-net:
+    driver: bridge
+
+volumes:
+  mysql-data:

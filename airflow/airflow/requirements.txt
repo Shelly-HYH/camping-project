@@ -1,8 +1,0 @@
-docker
-sqlalchemy
-pymysql
-pandas
-pendulum
-geopy
-rapidfuzz
-
